@@ -88,7 +88,7 @@ src/
 
 ## 数据库（D1）
 
-评论存在 D1 里，绑定名 `DB`，库名 `blog`。正文仍然放在 Git 的 Markdown 中，D1 只存动态数据。
+评论存在 D1 里，绑定名 `DB`，库名 `blog`，库 ID `2f48d0ba-5a6e-443d-b938-7c6cc91a5c26`。正文仍然放在 Git 的 Markdown 中，D1 只存动态数据。
 
 ```bash
 npx wrangler d1 migrations apply blog --local   # 本地开发
@@ -125,6 +125,8 @@ IP_SALT=local-dev-salt
 ```
 
 线上用 `npx wrangler secret put ADMIN_TOKEN` 或在 Cloudflare 面板设置。
+
+> `wrangler secret put` 会用当前配置重新部署 Worker。若刚改完代码想一次上线，先 `git push` 触发部署，再补 secret，避免用旧构建覆盖新代码。
 
 ### 审核一条评论
 
