@@ -33,6 +33,22 @@ function escapeXml(value: string): string {
 		.replace(/'/g, "&apos;");
 }
 
+function timingSafeEqual(a: string, b: string): boolean {
+	const enc = new TextEncoder();
+	const bufA = enc.encode(a);
+	const bufB = enc.encode(b);
+
+	// 长度不同时仍遍历一遍，避免通过耗时泄露长度。
+	const len = Math.max(bufA.length, bufB.length);
+	let diff = bufA.length ^ bufB.length;
+
+	for (let i = 0; i < len; i += 1) {
+		diff |= (bufA[i] ?? 0) ^ (bufB[i] ?? 0);
+	}
+
+	return diff === 0;
+}
+
 async function hashIp(c: Context<{ Bindings: Bindings }>): Promise<string | null> {
 	const salt = c.env.IP_SALT;
 	const ip = c.req.header("CF-Connecting-IP");
@@ -49,11 +65,65 @@ async function hashIp(c: Context<{ Bindings: Bindings }>): Promise<string | null
 		.join("");
 }
 
-function isAuthorized(c: Context<{ Bindings: Bindings }>): boolean {
+async function isSessionValid(
+	c: Context<{ Bindings: Bindings }>,
+	session: string,
+): Promise<boolean> {
 	const token = c.env.ADMIN_TOKEN;
 	if (!token) return false;
 
-	return c.req.header("Authorization") === `Bearer ${token}`;
+	const parts = session.split(".");
+	if (parts.length !== 3) return false;
+
+	const [issuedRaw, expiresRaw, signature] = parts;
+	const issued = Number(issuedRaw);
+	const expires = Number(expiresRaw);
+
+	if (!Number.isFinite(issued) || !Number.isFinite(expires)) return false;
+	if (expires <= Date.now() || Date.now() < issued) return false;
+	if (expires - issued > 24 * 60 * 60 * 1000) return false;
+
+	const key = await crypto.subtle.importKey(
+		"raw",
+		new TextEncoder().encode(token),
+		{ name: "HMAC", hash: "SHA-256" },
+		false,
+		["sign"],
+	);
+	const expected = await crypto.subtle.sign(
+		"HMAC",
+		key,
+		new TextEncoder().encode(`${issuedRaw}.${expiresRaw}`),
+	);
+	const expectedHex = [...new Uint8Array(expected)]
+		.map((b) => b.toString(16).padStart(2, "0"))
+		.join("");
+
+	if (expectedHex.length !== signature.length) return false;
+
+	let diff = 0;
+	for (let i = 0; i < expectedHex.length; i += 1) {
+		diff |= expectedHex.charCodeAt(i) ^ signature.charCodeAt(i);
+	}
+
+	return diff === 0;
+}
+
+function getSession(c: Context<{ Bindings: Bindings }>): string | null {
+	const header = c.req.header("Authorization");
+	if (!header) return null;
+	return header.startsWith("Bearer ") ? header.slice(7) : null;
+}
+
+async function ensureAdmin(
+	c: Context<{ Bindings: Bindings }>,
+): Promise<Response | null> {
+	// 只接受 HMAC 签名的 session。密码本身绝不能作为凭证，
+	// 否则任何拿到密码的人都能绕过 12 小时有效期与签名机制。
+	const session = getSession(c);
+	if (session && (await isSessionValid(c, session))) return null;
+
+	return c.json({ error: "Unauthorized" }, 401);
 }
 
 app.get("/api/", (c) => c.json({ name: SITE.name, status: "ok" }));
@@ -134,9 +204,8 @@ app.post("/api/posts/:slug/comments", async (c) => {
 });
 
 app.get("/api/admin/comments", async (c) => {
-	if (!isAuthorized(c)) {
-		return c.json({ error: "Unauthorized" }, 401);
-	}
+	const denied = await ensureAdmin(c);
+	if (denied) return denied;
 
 	const status = c.req.query("status") ?? "pending";
 
@@ -148,9 +217,8 @@ app.get("/api/admin/comments", async (c) => {
 });
 
 app.post("/api/admin/comments/:id", async (c) => {
-	if (!isAuthorized(c)) {
-		return c.json({ error: "Unauthorized" }, 401);
-	}
+	const denied = await ensureAdmin(c);
+	if (denied) return denied;
 
 	const id = Number(c.req.param("id"));
 
@@ -171,6 +239,42 @@ app.post("/api/admin/comments/:id", async (c) => {
 	}
 
 	return c.json({ ok: true, id, status: payload.status });
+});
+
+app.post("/api/admin/login", async (c) => {
+	const expected = c.env.ADMIN_TOKEN;
+	if (!expected) {
+		return c.json({ error: "服务端未配置管理员口令" }, 503);
+	}
+
+	const body = (await c.req.json().catch(() => null)) as { password?: unknown } | null;
+	const provided = typeof body?.password === "string" ? body.password : "";
+
+	// 时间恒定比较，避免通过响应耗时逐字节猜出口令。
+	if (!provided.length || !timingSafeEqual(provided, expected)) {
+		return c.json({ error: "密码不正确" }, 401);
+	}
+
+	const ttl = 12 * 60 * 60 * 1000;
+	const issued = Date.now();
+	const sessionPayload = `${issued}.${issued + ttl}`;
+	const key = await crypto.subtle.importKey(
+		"raw",
+		new TextEncoder().encode(expected),
+		{ name: "HMAC", hash: "SHA-256" },
+		false,
+		["sign"],
+	);
+	const signature = await crypto.subtle.sign(
+		"HMAC",
+		key,
+		new TextEncoder().encode(sessionPayload),
+	);
+	const session = `${sessionPayload}.${[...new Uint8Array(signature)]
+		.map((b) => b.toString(16).padStart(2, "0"))
+		.join("")}`;
+
+	return c.json({ ok: true, session, expiresInMs: ttl });
 });
 
 app.get("/api/tags", (c) => c.json(listTags()));

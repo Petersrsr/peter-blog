@@ -75,10 +75,12 @@ src/
 | `/posts/:slug` | 文章详情 |
 | `/archive` | 按年份归档 |
 | `/about` | 关于 |
+| `/admin` | 评论审核页（需密码登录） |
 | `/api/posts` | 文章列表 JSON |
 | `/api/posts/:slug` | 文章详情 JSON（含渲染后的 HTML） |
 | `/api/posts/:slug/comments` | GET 已审核评论 / POST 提交评论 |
-| `/api/admin/comments` | GET 评论列表（需 `Authorization: Bearer <ADMIN_TOKEN>`） |
+| `/api/admin/login` | POST 用密码换 12 小时签名 session |
+| `/api/admin/comments` | GET 评论列表（需审核 session） |
 | `/api/admin/comments/:id` | POST 改评论状态 `pending`/`approved`/`spam`/`deleted` |
 | `/api/tags` | 标签及数量 |
 | `/rss.xml` | RSS 2.0 |
@@ -114,8 +116,10 @@ npx wrangler d1 migrations create blog 0002_xxx
 
 | 名称 | 类型 | 说明 |
 | --- | --- | --- |
-| `ADMIN_TOKEN` | Secret | 管理端 Bearer Token，未设置时管理端一律返回 401 |
+| `ADMIN_TOKEN` | Secret | **审核页的登录密码**；未设置时登录返回 503，管理端一律 401 |
 | `IP_SALT` | Secret | 用于给访客 IP 加盐哈希；不设置则不记录 IP、不限流 |
+
+`ADMIN_TOKEN` 同时充当 session 签名的 HMAC 密钥，所以它是唯一需要保密的值。
 
 本地开发用 `.dev.vars`（已在 `.gitignore` 中）：
 
@@ -128,16 +132,35 @@ IP_SALT=local-dev-salt
 
 > `wrangler secret put` 会用当前配置重新部署 Worker。若刚改完代码想一次上线，先 `git push` 触发部署，再补 secret，避免用旧构建覆盖新代码。
 
-### 审核一条评论
+### 审核评论
+
+打开 <https://blog.peternet.xyz/admin>，输入 `ADMIN_TOKEN` 即可。登录后可按状态切换列表，逐条「通过 / 垃圾 / 退回待审 / 删除」，session 有效期 12 小时，退出后需重新登录。
+
+背后的会话机制（为什么不该把密码直接当 Bearer 用）：
+
+1. `POST /api/admin/login` 校验密码（时间恒定比较），通过后签发 `issued.expires.signature`
+2. `signature = HMAC-SHA256(ADMIN_TOKEN, "issued.expires")`，服务端无需存储
+3. 管理端点只接受这个签名 session，同时校验有效期上限 24 小时
+4. 密码本身**不是**凭证：用密码原文当 Bearer 会返回 401
+
+想从命令行操作也可以：
 
 ```bash
 curl "https://blog.peternet.xyz/api/admin/comments" \
-  -H "Authorization: Bearer $ADMIN_TOKEN"
+  -H "Authorization: Bearer $SESSION"
 
 curl -X POST "https://blog.peternet.xyz/api/admin/comments/1" \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Authorization: Bearer $SESSION" \
   -H "Content-Type: application/json" \
   -d '{"status":"approved"}'
+```
+
+`$SESSION` 从登录接口取：
+
+```bash
+SESSION=$(curl -s -X POST https://blog.peternet.xyz/api/admin/login \
+  -H 'Content-Type: application/json' \
+  -d "{\"password\":\"$ADMIN_TOKEN\"}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["session"])')
 ```
 
 也可以直接用 Cloudflare 面板的 SQL 控制台：

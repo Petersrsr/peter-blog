@@ -5,6 +5,7 @@ import { PostPage } from "./pages/PostPage";
 import { Archive } from "./pages/Archive";
 import { About } from "./pages/About";
 import { NotFound } from "./pages/NotFound";
+import { Admin } from "./pages/Admin";
 import "./App.css";
 
 function App() {
@@ -23,6 +24,8 @@ function App() {
 		page = <Archive />;
 	} else if (path === "/about") {
 		page = <About />;
+	} else if (path === "/admin") {
+		page = <Admin />;
 	}
 
 	return <Layout>{page}</Layout>;
