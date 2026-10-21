@@ -1,4 +1,5 @@
 import { Link } from "../components/Link";
+import { Comments } from "../components/Comments";
 import { formatDate, useApi, useDocumentMeta } from "../lib/api";
 import type { Post } from "../../shared/types";
 
@@ -51,6 +52,8 @@ export function PostPage({ slug }: PostPageProps) {
 			</header>
 
 			<div className="prose" dangerouslySetInnerHTML={{ __html: data.html }} />
+
+			<Comments slug={slug} />
 
 			<footer className="post-footer">
 				<Link to="/" className="button ghost">

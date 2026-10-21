@@ -12,5 +12,13 @@
 		"directory": "./dist/client",
 		"not_found_handling": "single-page-application",
 		"run_worker_first": ["/api/*", "/rss.xml", "/sitemap.xml"]
-	}
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "blog",
+			"database_id": "2f48d0ba-5a6e-443d-b938-7c6cc91a5c26",
+			"migrations_dir": "./migrations"
+		}
+	]
 }
