@@ -1,10 +1,29 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 	<head>
 		<meta charset="UTF-8" />
-		<link rel="icon" type="image/svg+xml" href="/vite.svg" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<title>Vite + React + TS</title>
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<meta name="theme-color" content="#faf9f6" />
+		<meta name="description" content="关于代码、产品与日常的记录。站点部署在 Cloudflare 的全球网络上。" />
+		<meta property="og:title" content="Peter's Blog" />
+		<meta property="og:description" content="关于代码、产品与日常的记录。" />
+		<meta property="og:type" content="website" />
+		<title>Peter's Blog · 在边缘写点东西</title>
+		<script>
+			(function () {
+				try {
+					var stored = localStorage.getItem("theme");
+					var dark =
+						stored === "dark" ||
+						(stored === null &&
+							window.matchMedia("(prefers-color-scheme: dark)").matches);
+					document.documentElement.dataset.theme = dark ? "dark" : "light";
+				} catch (error) {
+					document.documentElement.dataset.theme = "light";
+				}
+			})();
+		</script>
 	</head>
 
 	<body>

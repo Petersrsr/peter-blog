@@ -1,6 +1,6 @@
 {
 	"name": "peter-blog",
-	"description": "A template for building a React application with Vite, Hono, and Cloudflare Workers",
+	"description": "Personal blog built with React, Hono, and Cloudflare Workers",
 	"cloudflare": {
 		"label": "Vite React Template",
 		"products": [
@@ -13,6 +13,7 @@
 	},
 	"dependencies": {
 		"hono": "4.11.1",
+		"marked": "^18.1.1",
 		"react": "19.2.1",
 		"react-dom": "19.2.1"
 	},
